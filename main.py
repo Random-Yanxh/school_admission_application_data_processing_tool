@@ -58,12 +58,68 @@ class DataProcessorApp:
         self.jump_button = ttk.Button(nav_frame, text="跳转", command=self.jump_to_record)
         self.jump_button.pack(side=tk.LEFT, padx=5)
 
+        # --- Batch Fill Frame ---
+        batch_frame = ttk.LabelFrame(main_frame, text="批量填充工具", padding="10")
+        batch_frame.pack(fill=tk.X, pady=(10, 5))
+        self.create_batch_fill_widgets(batch_frame)
+
         # --- Data Form Frame ---
         self.form_frame = ttk.LabelFrame(main_frame, text="数据编辑", padding="15")
         self.form_frame.pack(fill=tk.BOTH, expand=True)
         
         # --- Create form fields ---
         self.create_form_fields()
+
+    def create_batch_fill_widgets(self, parent_frame):
+        """Create widgets for the batch fill functionality."""
+        self.batch_entries = {}
+        
+        # Define fields that can be batch-filled
+        batch_fields = {
+            "审批人学工号": "Entry",
+            "审批人姓名": "Entry",
+            "访问开始时间": "DateTime",
+            "访问结束时间": "DateTime",
+            "拜访人及事由": "Text"
+        }
+
+        row = 0
+        col = 0
+        for field, widget_type in batch_fields.items():
+            if col >= 4: # Max 2 fields per row
+                row += 1
+                col = 0
+
+            field_frame = ttk.Frame(parent_frame)
+            field_frame.grid(row=row, column=col, padx=5, pady=5, sticky=tk.W)
+            
+            ttk.Label(field_frame, text=f"{field}:").pack(side=tk.LEFT)
+
+            if widget_type == "DateTime":
+                date_entry = DateEntry(field_frame, width=12, date_pattern='yyyy-mm-dd')
+                date_entry.pack(side=tk.LEFT, padx=(5,0))
+                hour_spin = ttk.Spinbox(field_frame, from_=0, to=23, wrap=True, width=3, format="%02.0f")
+                hour_spin.pack(side=tk.LEFT)
+                minute_spin = ttk.Spinbox(field_frame, from_=0, to=59, wrap=True, width=3, format="%02.0f")
+                minute_spin.pack(side=tk.LEFT)
+                self.batch_entries[field] = (date_entry, hour_spin, minute_spin)
+            elif widget_type == "Text":
+                 # Use an Entry for single-line batch input of reason
+                self.batch_entries[field] = ttk.Entry(field_frame, width=20)
+                self.batch_entries[field].pack(side=tk.LEFT, padx=(5,0))
+            else: # Entry
+                self.batch_entries[field] = ttk.Entry(field_frame, width=20)
+                self.batch_entries[field].pack(side=tk.LEFT, padx=(5,0))
+            
+            col += 1
+
+        # Apply button
+        apply_button = ttk.Button(parent_frame, text="应用到后续所有记录", command=self.batch_fill_data)
+        apply_button.grid(row=row, column=col, padx=10, pady=5, sticky=tk.E)
+        
+        # Make the last column expandable
+        parent_frame.grid_columnconfigure(col, weight=1)
+
 
     def create_form_fields(self):
         """Create labels and entry widgets for the data form."""
@@ -362,6 +418,56 @@ class DataProcessorApp:
             date_entry, hour_spin, minute_spin = widgets
             date_str = date_entry.get_date().strftime('%Y-%m-%d')
             record[key] = f"{date_str} {hour_spin.get()}:{minute_spin.get()}"
+
+    def batch_fill_data(self):
+        """Applies data from batch-fill widgets to all subsequent records."""
+        if not self.data:
+            messagebox.showwarning("无数据", "请先导入文件。")
+            return
+
+        # Gather data from batch widgets, only consider non-empty fields
+        fill_data = {}
+        for field, widget in self.batch_entries.items():
+            value = ""
+            if isinstance(widget, tuple): # DateTime widget
+                date_entry, hour_spin, minute_spin = widget
+                date_val = date_entry.get()
+                hour_val = hour_spin.get()
+                minute_val = minute_spin.get()
+                if date_val: # Only add if date is set
+                    value = f"{date_val} {hour_val}:{minute_val}"
+            else: # Entry widget
+                value = widget.get().strip()
+            
+            if value:
+                fill_data[field] = value
+        
+        if not fill_data:
+            messagebox.showinfo("无操作", "所有批量填充字段均为空，未执行任何操作。")
+            return
+
+        start_index = self.current_index
+        record_count = len(self.data) - start_index
+        
+        field_names = ", ".join(fill_data.keys())
+        
+        confirm = messagebox.askyesno(
+            "确认批量填充",
+            f"您确定要将以下字段的值:\n\n{field_names}\n\n应用到从当前记录 {start_index + 1} 开始的全部 {record_count} 条记录吗？\n\n此操作无法撤销。"
+        )
+
+        if not confirm:
+            return
+
+        # Apply the data
+        for i in range(start_index, len(self.data)):
+            for field, value in fill_data.items():
+                self.data[i][field] = value
+        
+        # Refresh the current view to show the changes if it was affected
+        self.load_record(self.current_index)
+        
+        messagebox.showinfo("完成", f"已成功更新 {record_count} 条记录。")
 
     def validate_record(self, index):
         """Validate a specific record based on the rules."""
