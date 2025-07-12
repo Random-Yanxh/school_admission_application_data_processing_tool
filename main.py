@@ -197,7 +197,12 @@ class DataProcessorApp:
 
         try:
             if path.endswith('.csv'):
-                df = pd.read_csv(path, dtype=str, header=0)
+                try:
+                    # First, try to read with standard UTF-8
+                    df = pd.read_csv(path, dtype=str, header=0)
+                except UnicodeDecodeError:
+                    # If UTF-8 fails, it's likely a GBK-encoded file (like our own export)
+                    df = pd.read_csv(path, dtype=str, header=0, encoding='gbk')
             else:
                 df = pd.read_excel(path, dtype=str, header=0)
 
@@ -554,12 +559,24 @@ class DataProcessorApp:
             
         df = pd.DataFrame(processed_data)
         
-        output_columns = [key.replace('*', '') for key in self.ui_fields]
-        df = df[[col for col in output_columns if col in df.columns]]
+        # Define the exact header order and format for the output file
+        output_columns_with_asterisks = [
+            "访问形式*", "访客姓名*", "手机号*", "证件类型*", "证件号码*", "车辆号码",
+            "审批人学工号", "审批人姓名", "场所名称*", "访问开始时间*", "访问结束时间*", "拜访人及事由"
+        ]
+        
+        # Get the base column names to ensure correct order before renaming
+        output_columns_base = [col.replace('*', '') for col in output_columns_with_asterisks]
+        
+        # Reorder the dataframe according to the base names
+        df = df[output_columns_base]
+        
+        # Rename the columns to the desired format with asterisks
+        df.columns = output_columns_with_asterisks
 
         try:
             if path.endswith('.csv'):
-                df.to_csv(path, index=False, encoding='gb2312')
+                df.to_csv(path, index=False, encoding='gbk')
             elif path.endswith('.xlsx'):
                 df.to_excel(path, index=False)
             elif path.endswith('.json'):
