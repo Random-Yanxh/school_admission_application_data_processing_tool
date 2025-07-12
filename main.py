@@ -559,7 +559,7 @@ class DataProcessorApp:
 
         try:
             if path.endswith('.csv'):
-                df.to_csv(path, index=False, encoding='utf-8-sig')
+                df.to_csv(path, index=False, encoding='gb2312')
             elif path.endswith('.xlsx'):
                 df.to_excel(path, index=False)
             elif path.endswith('.json'):
