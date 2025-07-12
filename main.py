@@ -58,14 +58,18 @@ class DataProcessorApp:
         self.jump_button = ttk.Button(nav_frame, text="跳转", command=self.jump_to_record)
         self.jump_button.pack(side=tk.LEFT, padx=5)
 
-        # --- Batch Fill Frame ---
-        batch_frame = ttk.LabelFrame(main_frame, text="批量填充工具", padding="10")
-        batch_frame.pack(fill=tk.X, pady=(10, 5))
+        # --- Content Frame for side-by-side layout ---
+        content_frame = ttk.Frame(main_frame)
+        content_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 5))
+
+        # --- Batch Fill Frame (Left Side) ---
+        batch_frame = ttk.LabelFrame(content_frame, text="批量填充工具", padding="10")
+        batch_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10), anchor='n')
         self.create_batch_fill_widgets(batch_frame)
 
-        # --- Data Form Frame ---
-        self.form_frame = ttk.LabelFrame(main_frame, text="数据编辑", padding="15")
-        self.form_frame.pack(fill=tk.BOTH, expand=True)
+        # --- Data Form Frame (Right Side) ---
+        self.form_frame = ttk.LabelFrame(content_frame, text="数据编辑", padding="15")
+        self.form_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
         # --- Create form fields ---
         self.create_form_fields()
@@ -83,42 +87,34 @@ class DataProcessorApp:
             "拜访人及事由": "Text"
         }
 
-        row = 0
-        col = 0
+        # Vertical layout using pack
         for field, widget_type in batch_fields.items():
-            if col >= 4: # Max 2 fields per row
-                row += 1
-                col = 0
-
             field_frame = ttk.Frame(parent_frame)
-            field_frame.grid(row=row, column=col, padx=5, pady=5, sticky=tk.W)
+            field_frame.pack(fill=tk.X, pady=4, anchor='w')
             
-            ttk.Label(field_frame, text=f"{field}:").pack(side=tk.LEFT)
+            label = ttk.Label(field_frame, text=f"{field}:", width=12)
+            label.pack(side=tk.LEFT, anchor='w')
 
             if widget_type == "DateTime":
-                date_entry = DateEntry(field_frame, width=12, date_pattern='yyyy-mm-dd')
-                date_entry.pack(side=tk.LEFT, padx=(5,0))
-                hour_spin = ttk.Spinbox(field_frame, from_=0, to=23, wrap=True, width=3, format="%02.0f")
-                hour_spin.pack(side=tk.LEFT)
-                minute_spin = ttk.Spinbox(field_frame, from_=0, to=59, wrap=True, width=3, format="%02.0f")
+                # Container for the datetime widgets
+                dt_frame = ttk.Frame(field_frame)
+                dt_frame.pack(side=tk.LEFT, anchor='w')
+
+                date_entry = DateEntry(dt_frame, width=12, date_pattern='yyyy-mm-dd')
+                date_entry.pack(side=tk.LEFT)
+                hour_spin = ttk.Spinbox(dt_frame, from_=0, to=23, wrap=True, width=3, format="%02.0f")
+                hour_spin.pack(side=tk.LEFT, padx=(5,0))
+                minute_spin = ttk.Spinbox(dt_frame, from_=0, to=59, wrap=True, width=3, format="%02.0f")
                 minute_spin.pack(side=tk.LEFT)
                 self.batch_entries[field] = (date_entry, hour_spin, minute_spin)
-            elif widget_type == "Text":
-                 # Use an Entry for single-line batch input of reason
-                self.batch_entries[field] = ttk.Entry(field_frame, width=20)
-                self.batch_entries[field].pack(side=tk.LEFT, padx=(5,0))
-            else: # Entry
-                self.batch_entries[field] = ttk.Entry(field_frame, width=20)
-                self.batch_entries[field].pack(side=tk.LEFT, padx=(5,0))
-            
-            col += 1
+            else: # Entry or Text (represented as Entry)
+                entry = ttk.Entry(field_frame)
+                entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(5,0))
+                self.batch_entries[field] = entry
 
-        # Apply button
+        # Apply button at the bottom
         apply_button = ttk.Button(parent_frame, text="应用到后续所有记录", command=self.batch_fill_data)
-        apply_button.grid(row=row, column=col, padx=10, pady=5, sticky=tk.E)
-        
-        # Make the last column expandable
-        parent_frame.grid_columnconfigure(col, weight=1)
+        apply_button.pack(pady=(10,0), fill=tk.X)
 
 
     def create_form_fields(self):
