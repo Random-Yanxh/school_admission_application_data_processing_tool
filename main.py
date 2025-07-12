@@ -197,13 +197,28 @@ class DataProcessorApp:
 
         try:
             if path.endswith('.csv'):
+                # Detect header row and encoding
+                header_row_index = 0
+                detected_encoding = 'utf-8'
                 try:
-                    # First, try to read with standard UTF-8
-                    df = pd.read_csv(path, dtype=str, header=0)
+                    with open(path, 'r', encoding='utf-8') as f:
+                        for i, line in enumerate(f):
+                            if '访问形式*' in line and '访客姓名*' in line:
+                                header_row_index = i
+                                break
+                    detected_encoding = 'utf-8'
                 except UnicodeDecodeError:
-                    # If UTF-8 fails, it's likely a GBK-encoded file (like our own export)
-                    df = pd.read_csv(path, dtype=str, header=0, encoding='gbk')
+                    with open(path, 'r', encoding='gbk') as f:
+                        for i, line in enumerate(f):
+                            if '访问形式*' in line and '访客姓名*' in line:
+                                header_row_index = i
+                                break
+                    detected_encoding = 'gbk'
+                
+                # Read the CSV with the detected header row and encoding
+                df = pd.read_csv(path, dtype=str, header=header_row_index, encoding=detected_encoding)
             else:
+                # For Excel, pandas handles headers automatically
                 df = pd.read_excel(path, dtype=str, header=0)
 
             df = df.fillna('')
@@ -576,7 +591,25 @@ class DataProcessorApp:
 
         try:
             if path.endswith('.csv'):
-                df.to_csv(path, index=False, encoding='gbk')
+                # Manual write to add header lines
+                with open(path, 'w', newline='', encoding='gbk') as f:
+                    # Write the 12-line header
+                    header_text = """访问形式*：可填值：公务拜访或入校参观,,,,,,,,,,,
+访客姓名*：访客姓名必填,,,,,,,,,,,
+手机号*：手机号必填，以#号结尾,,,,,,,,,,,
+证件类型*：证件类型必填 填写:身份证或护照,,,,,,,,,,,
+证件号码*：证件号码必填，以#号结尾,,,,,,,,,,,
+车辆号码：车辆号码选填,,,,,,,,,,,
+审批人学工号：审批人学工号 公务拜访必填 /入校参观不填，以#号结尾,,,,,,,,,,,
+审批人姓名：审批人姓名 公务拜访选填 /入校参观不填,,,,,,,,,,,
+场所名称*：场所名称必填 公务拜访为拜访场所/入校参观为参观场所，多个用@号隔开，最小层级为校区，填写场所名称如下:东区@西区@北区@梅山校区,,,,,,,,,,,
+访问开始时间*：访问开始时间必填，时间格式如下:2023-06-27 00:00#，以#结尾,,,,,,,,,,,
+访问结束时间*：访问结束时间必填，时间格式如下:2023-06-30 23:00#，以#结尾,,,,,,,,,,,
+拜访人及事由：拜访人及事由 公务拜访选填 /入校参观不填,,,,,,,,,,,
+"""
+                    f.write(header_text)
+                    # Write the DataFrame content after the header
+                    df.to_csv(f, index=False)
             elif path.endswith('.xlsx'):
                 df.to_excel(path, index=False)
             elif path.endswith('.json'):
