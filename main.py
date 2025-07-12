@@ -58,7 +58,6 @@ class DataProcessorApp:
         self.jump_button = ttk.Button(nav_frame, text="跳转", command=self.jump_to_record)
         self.jump_button.pack(side=tk.LEFT, padx=5)
 
-
         # --- Data Form Frame ---
         self.form_frame = ttk.LabelFrame(main_frame, text="数据编辑", padding="15")
         self.form_frame.pack(fill=tk.BOTH, expand=True)
@@ -88,13 +87,28 @@ class DataProcessorApp:
                 self.entries[field_key] = ttk.Combobox(self.form_frame, values=["身份证", "护照"], width=40)
             elif field_text == "场所名称*":
                 location_frame = ttk.Frame(self.form_frame)
+                location_frame.grid(row=i, column=1, columnspan=2, sticky=tk.W, padx=5)
+                
+                # 复选框部分
+                checkbox_frame = ttk.Frame(location_frame)
+                checkbox_frame.pack(anchor=tk.W, pady=(0, 5))
+                
                 self.location_vars = {
                     "东区": tk.BooleanVar(), "西区": tk.BooleanVar(),
                     "北区": tk.BooleanVar(), "梅山校区": tk.BooleanVar()
                 }
                 for name, var in self.location_vars.items():
-                    ttk.Checkbutton(location_frame, text=name, variable=var).pack(side=tk.LEFT, padx=5)
+                    ttk.Checkbutton(checkbox_frame, text=name, variable=var).pack(side=tk.LEFT, padx=5)
+                
+                # 添加文本框
+                text_frame = ttk.Frame(location_frame)
+                text_frame.pack(anchor=tk.W, fill=tk.X)
+                ttk.Label(text_frame, text="其他场所:").pack(side=tk.LEFT)
+                self.location_text_entry = ttk.Entry(text_frame, width=30)
+                self.location_text_entry.pack(side=tk.LEFT, padx=(5, 0), fill=tk.X, expand=True)
+                
                 self.entries[field_key] = location_frame
+                continue  # 跳过后面的grid设置，因为已经在上面设置了
             elif "时间" in field_text:
                 date_entry = DateEntry(self.form_frame, width=18, date_pattern='yyyy-mm-dd',
                                        background='darkblue', foreground='white', borderwidth=2)
@@ -114,9 +128,9 @@ class DataProcessorApp:
             else:
                 self.entries[field_key] = ttk.Entry(self.form_frame, width=43)
             
-            if field_key != "场所名称":
+            # 为非特殊字段设置grid
+            if field_key not in ["场所名称"]:
                 self.entries[field_key].grid(row=i, column=1, columnspan=2, sticky=tk.W, padx=5)
-
 
     def import_file(self):
         """
@@ -137,22 +151,62 @@ class DataProcessorApp:
 
             df = df.fillna('')
             
-            standard_keys = [key.replace('*', '') for key in self.ui_fields]
-            original_cols_map = {col.strip().replace('*', ''): col for col in df.columns}
+            # 添加调试信息
+            print(f"DataFrame shape: {df.shape}")
+            print(f"DataFrame columns: {df.columns.tolist()}")
+            print(f"First few rows:\n{df.head()}")
             
+            # 确保读取所有数据行，包括第一条数据
+            if df.empty:
+                messagebox.showwarning("警告", "文件为空，没有数据可处理。")
+                return
+            
+            # 创建列名映射
+            column_mapping = {}
+            for col in df.columns:
+                clean_col = col.strip().replace('*', '')
+                column_mapping[clean_col] = col
+            
+            print(f"Column mapping: {column_mapping}")
+            
+            # 处理数据
             processed_records = []
-            for _, row in df.iterrows():
+            for idx, row in df.iterrows():
                 new_record = {}
-                for key in standard_keys:
-                    original_col_name = original_cols_map.get(key)
-                    value = str(row[original_col_name]) if original_col_name and original_col_name in row else ''
+                
+                # 映射已知字段
+                field_mappings = {
+                    "访问形式": ["访问形式"],
+                    "访客姓名": ["访客姓名"],
+                    "手机号": ["手机号"],
+                    "证件类型": ["证件类型"],
+                    "证件号码": ["证件号码"],
+                    "车辆号码": ["车辆号码"],
+                    "审批人学工号": ["审批人学工号"],
+                    "审批人姓名": ["审批人姓名"],
+                    "场所名称": ["场所名称"],
+                    "访问开始时间": ["访问开始时间"],
+                    "访问结束时间": ["访问结束时间"],
+                    "拜访人及事由": ["拜访人及事由"]
+                }
+                
+                for field_key, possible_names in field_mappings.items():
+                    value = ""
+                    for name in possible_names:
+                        if name in column_mapping:
+                            original_col = column_mapping[name]
+                            if original_col in row:
+                                value = str(row[original_col]).strip()
+                                break
                     
-                    # --- Centralized Data Cleaning ---
-                    if key == "车辆号码":
+                    # 数据清理
+                    if field_key == "车辆号码":
                         value = value.replace(" ", "").upper()
                     
-                    new_record[key] = value
+                    new_record[field_key] = value
+                
                 processed_records.append(new_record)
+                print(f"Record {idx + 1}: {new_record}")
 
             self.data = processed_records
             self.file_path = path
@@ -162,62 +216,120 @@ class DataProcessorApp:
                 messagebox.showwarning("警告", "文件为空，没有数据可处理。")
                 return
 
-            self.file_label.config(text=f"已加载: {path.split('/')[-1]}")
-            self.load_record(self.current_index)
+            self.file_label.config(text=f"已加载: {path.split('/')[-1]} ({len(self.data)}条记录)")
+            
+            # 重要：先更新UI状态，再加载记录
             self.update_ui_state("normal")
+            self.load_record(self.current_index)
             self.update_progress()
-            self.root.update_idletasks()
+            
+            print(f"Loading first record: {self.data[0]}")
 
         except Exception as e:
             messagebox.showerror("导入错误", f"无法读取文件: {e}")
+            print(f"详细错误信息: {e}")
+            import traceback
+            traceback.print_exc()
 
     def load_record(self, index):
         """Load data from a specific record index into the UI form."""
-        if not self.data:
+        if not self.data or index >= len(self.data):
             return
         
         record = self.data[index]
+        print(f"Loading record {index + 1}: {record}")
         
         def get_val(key, default=''):
-            return record.get(key, default)
+            value = record.get(key, default)
+            print(f"Getting {key}: '{value}'")
+            return value
 
-        # Populate form fields using the standard keys
-        self.entries["访问形式"].set(get_val("访问形式"))
-        self.entries["访客姓名"].delete(0, tk.END)
-        self.entries["访客姓名"].insert(0, get_val("访客姓名"))
-        self.entries["手机号"].delete(0, tk.END)
-        self.entries["手机号"].insert(0, get_val("手机号"))
-        self.entries["证件类型"].set(get_val("证件类型"))
-        self.entries["证件号码"].delete(0, tk.END)
-        self.entries["证件号码"].insert(0, get_val("证件号码"))
-        self.entries["车辆号码"].delete(0, tk.END)
-        self.entries["车辆号码"].insert(0, get_val("车辆号码"))
-        
-        self.entries["审批人学工号"].delete(0, tk.END)
-        self.entries["审批人学工号"].insert(0, get_val("审批人学工号"))
-        self.entries["审批人姓名"].delete(0, tk.END)
-        self.entries["审批人姓名"].insert(0, get_val("审批人姓名"))
-        
-        locations = get_val("场所名称").split('@')
-        for name, var in self.location_vars.items():
-            var.set(name in locations)
+        # 清空并填充表单字段
+        try:
+            # 访问形式
+            self.entries["访问形式"].set(get_val("访问形式"))
             
-        self.entries["拜访人及事由"].delete("1.0", tk.END)
-        self.entries["拜访人及事由"].insert("1.0", get_val("拜访人及事由"))
-        
-        # Handle time fields
-        for key, widgets in [("访问开始时间", self.entries["访问开始时间"]), ("访问结束时间", self.entries["访问结束时间"])]:
-            try:
-                full_time_str = get_val(key, " ")
-                date_str, time_str = (full_time_str.split(" ") + ["00:00"])[:2]
-                hour, minute = (time_str.split(":") + ["00", "00"])[:2]
+            # 访客姓名
+            self.entries["访客姓名"].delete(0, tk.END)
+            self.entries["访客姓名"].insert(0, get_val("访客姓名"))
+            
+            # 手机号
+            self.entries["手机号"].delete(0, tk.END)
+            self.entries["手机号"].insert(0, get_val("手机号"))
+            
+            # 证件类型
+            self.entries["证件类型"].set(get_val("证件类型"))
+            
+            # 证件号码
+            self.entries["证件号码"].delete(0, tk.END)
+            self.entries["证件号码"].insert(0, get_val("证件号码"))
+            
+            # 车辆号码
+            self.entries["车辆号码"].delete(0, tk.END)
+            self.entries["车辆号码"].insert(0, get_val("车辆号码"))
+            
+            # 审批人学工号
+            self.entries["审批人学工号"].delete(0, tk.END)
+            self.entries["审批人学工号"].insert(0, get_val("审批人学工号"))
+            
+            # 审批人姓名
+            self.entries["审批人姓名"].delete(0, tk.END)
+            self.entries["审批人姓名"].insert(0, get_val("审批人姓名"))
+            
+            # 场所名称（复选框 + 文本框）
+            locations_str = get_val("场所名称")
+            locations = locations_str.split('@') if locations_str else []
+            
+            # 重置复选框
+            for name, var in self.location_vars.items():
+                var.set(name in locations)
+            
+            # 处理文本框内容（非预设选项的内容）
+            predefined_locations = set(self.location_vars.keys())
+            other_locations = [loc for loc in locations if loc and loc not in predefined_locations]
+            self.location_text_entry.delete(0, tk.END)
+            if other_locations:
+                self.location_text_entry.insert(0, "@".join(other_locations))
                 
-                date_entry, hour_spin, minute_spin = widgets
-                if date_str: date_entry.set_date(date_str)
-                hour_spin.set(hour)
-                minute_spin.set(minute)
-            except (ValueError, IndexError):
-                continue # Ignore if date/time is malformed
+            # 拜访人及事由
+            self.entries["拜访人及事由"].delete("1.0", tk.END)
+            self.entries["拜访人及事由"].insert("1.0", get_val("拜访人及事由"))
+            
+            # 处理时间字段
+            for key, widgets in [("访问开始时间", self.entries["访问开始时间"]), ("访问结束时间", self.entries["访问结束时间"])]:
+                try:
+                    full_time_str = get_val(key, "2025-07-12 00:00")
+                    if " " in full_time_str:
+                        date_str, time_str = full_time_str.split(" ", 1)
+                    else:
+                        date_str = full_time_str if full_time_str else "2025-07-12"
+                        time_str = "00:00"
+                    
+                    if ":" in time_str:
+                        hour, minute = time_str.split(":", 1)
+                    else:
+                        hour, minute = "00", "00"
+                    
+                    date_entry, hour_spin, minute_spin = widgets
+                    if date_str:
+                        try:
+                            date_entry.set_date(date_str)
+                        except:
+                            date_entry.set_date("2025-07-12")
+                    hour_spin.set(hour.zfill(2))
+                    minute_spin.set(minute.zfill(2))
+                except Exception as e:
+                    print(f"Error setting time for {key}: {e}")
+                    # 设置默认值
+                    date_entry, hour_spin, minute_spin = widgets
+                    date_entry.set_date("2025-07-12")
+                    hour_spin.set("00")
+                    minute_spin.set("00")
+                    
+        except Exception as e:
+            print(f"Error loading record: {e}")
+            import traceback
+            traceback.print_exc()
         
     def save_current_record(self):
         """Save the data from the UI form back to the current record."""
@@ -236,7 +348,11 @@ class DataProcessorApp:
         record["审批人学工号"] = self.entries["审批人学工号"].get()
         record["审批人姓名"] = self.entries["审批人姓名"].get()
         
+        # 保存场所名称（复选框 + 文本框）
         selected_locations = [name for name, var in self.location_vars.items() if var.get()]
+        other_location = self.location_text_entry.get().strip()
+        if other_location:
+            selected_locations.append(other_location)
         record["场所名称"] = "@".join(selected_locations)
         
         # Corrected the text widget get method
@@ -358,10 +474,20 @@ class DataProcessorApp:
             widget.config(state=state)
 
         for field_key, widget_or_group in self.entries.items():
-            # Handle the Frame containing Checkbuttons
+            # Handle the Frame containing Checkbuttons and text entry
             if field_key == "场所名称":
                 for child in widget_or_group.winfo_children():
-                    child.config(state=state)
+                    if isinstance(child, ttk.Frame):
+                        for grandchild in child.winfo_children():
+                            try:
+                                grandchild.config(state=state)
+                            except tk.TclError:
+                                pass
+                    else:
+                        try:
+                            child.config(state=state)
+                        except tk.TclError:
+                            pass
             # Handle the tuple of time-related widgets
             elif isinstance(widget_or_group, tuple):
                 for w in widget_or_group:
