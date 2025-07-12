@@ -259,6 +259,10 @@ class DataProcessorApp:
                     if field_key == "车辆号码":
                         value = value.replace(" ", "").upper()
                     
+                    # 移除导入时可能存在的 # 后缀
+                    if value.endswith('#'):
+                        value = value[:-1]
+                        
                     new_record[field_key] = value
                 
                 processed_records.append(new_record)
